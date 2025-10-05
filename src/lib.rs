@@ -1,2 +1,2 @@
-// pub mod proc;
+pub mod proc;
 pub mod common;

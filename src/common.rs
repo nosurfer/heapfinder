@@ -2,15 +2,17 @@ use std::fs::File;
 use std::io::{self, Read, Seek, SeekFrom};
 
 const EI_CLASS_OFFSET: u64 = 4;
+pub enum Arch {
+    X86, 
+    X64,
+}
 
-#[derive(Debug)]
-pub enum Arch { X86, X64 }
-
-pub fn get_arch(path: &str) -> io::Result<Arch> {
-    let mut fd = File::open(path).map_err(|e| {
+pub fn get_arch(pid: usize) -> io::Result<Arch> {
+    let fmt = format!("/proc/{}/exe", pid);
+    let mut fd = File::open(&fmt).map_err(|e| {
         io::Error::new(
             e.kind(), 
-            format!("Failed to open file {}: {}", path, e))
+            format!("Failed to open file {}: {}", fmt, e))
     })?;
     fd.seek(SeekFrom::Start(EI_CLASS_OFFSET))?;
 
