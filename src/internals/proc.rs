@@ -1,16 +1,11 @@
+use hex;
 use regex::Regex;
-use std::collections::HashMap;
 use std::fs::File;
-use std::io::Read;
-use nix::{sys::ptrace, unistd::Pid, sys::wait::{waitpid, WaitStatus}};
-use std::io::Seek;
-use std::io::SeekFrom;
 use std::ops::Range;
-use std::path::PathBuf;
-use std::path::Path;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::io::{Read, Seek, SeekFrom};
 use super::common::{get_arch, Arch};
-use std::ffi::{c_void, c_long};
-use std::error::Error;
 
 const LIBC_REGEX: &str = r"^[^\x00]*libc(?:-[\d\.]+)?\.so(?:\.6)?$";
 const LD_REGEX: &str = r"^[^\x00]*ld(?:-[\d\.]+)?\.so(?:\.2)?$";
@@ -170,82 +165,136 @@ impl Proc {
         None
     }
 
-    // pub fn read(&self, addr: u64, size: usize) ->  Vec<u8> {
-    //     let path = format!("/proc/{}/mem", self.pid);
-    //     let mut file = File::open(&path)
-    //         .unwrap_or_else(|e| panic!("Failed to read file {}: {}", path, e));
-
-    //     let mut buf = vec![0u8; size];
-
-    //     file.seek(SeekFrom::Start(addr)).unwrap();
-    //     file.read_exact(&mut buf).unwrap();
-
-    //     buf
-    // }
-    // pub fn read(&self, addr: u64, size: usize) ->  Vec<u8> {
-    //     let pid = Pid::from_raw(self.pid as i32);
-    //     let path = format!("/proc/{}/mem", self.pid);
-
-    //     ptrace::attach(pid).expect("cant't attach to process");
-    //     waitpid(pid, None).expect("Waitpid failed");
-
-    //     let mut file = File::open(&path)
-    //         .unwrap_or_else(|e| panic!("Failed to open {}: {}", path, e));
-
-    //     file.seek(SeekFrom::Start(addr)).expect("Seek failed");
-    //     let mut buf = vec![0u8; size];
-    //     ptrace::read(pid, addr);
-
-    //     ptrace::detach(pid, None).expect("Can't detach");
-    //     buf
-    // }
-
-    pub fn read_mem(&self, addr: u64, size: usize) -> Vec<u8> {
+    pub fn read(&self, addr: u64, size: usize) -> Option<Vec<u8>> {
         let path = format!("/proc/{}/mem", self.pid);
         let mut buf = vec![0u8; size];
 
         if let Ok(mut f) = File::open(&path) {
             if f.seek(SeekFrom::Start(addr)).is_ok() {
-                if f.read_exact(&mut buf).is_err() {
-                    // on error, return empty
-                    buf.clear();
+                if f.read_exact(&mut buf).is_ok() {
+                    return Some(buf);
                 }
-            } else {
-                buf.clear();
             }
-        } else {
-            buf.clear();
         }
-        buf
+        None
     }
 
-    pub fn read_gpt(&self, addr: u64, size: usize) -> Result<Vec<u8>, Box<dyn Error>> {
-        let pid = Pid::from_raw(self.pid as i32);
+    fn searchmem(&self, range: &Range<u64>, pattern: &str) -> Vec<(u64, String)> {
+        let mut result = Vec::new();
 
-        ptrace::attach(pid)?;
-        waitpid(pid, None).expect("Waitpid failed");
+        if range.start >= range.end {
+            return result;
+        }
 
-        let result = (|| -> Result<Vec<u8>, Box<dyn Error>> {
-            let mut buf = Vec::with_capacity(size);
-            let word_size = std::mem::size_of::<c_long>();
-            let mut offset = 0usize;
+        let size_u64 = range.end.saturating_sub(range.start);
+        if size_u64 == 0 {
+            return result;
+        }
+        let size = match usize::try_from(size_u64) {
+            Ok(n) => n,
+            Err(_) => return result,
+        };
 
-            while offset < size {
-                let cur_addr = addr + offset as u64;
-                let c_addr: *mut c_void = cur_addr as *mut c_void;
-                let word = ptrace::read(pid, c_addr)?;
-                let bytes = word.to_ne_bytes();
-                let take = std::cmp::min(word_size, size - offset);
-                buf.extend_from_slice(&bytes[..take]);
-                offset += take;
+        let mem = match self.read(range.start, size) {
+            Some(m) => m,
+            None => return result,
+        };
+
+        let needle: Vec<u8> = if pattern.starts_with("0x") {
+            let mut hexstr = &pattern[2..];
+            if hexstr.len() % 2 != 0 {
+                let mut s = String::with_capacity(hexstr.len() + 1);
+                s.push('0');
+                s.push_str(hexstr);
+                hexstr = Box::leak(s.into_boxed_str());
             }
+            let mut b = match hex::decode(hexstr) {
+                Ok(v) => v,
+                Err(_) => return result,
+            };
+            b.reverse();
+            b
+        } else if pattern.chars().all(|c| c.is_ascii_digit()) {
+            // decimal integer -> minimal little-endian bytes
+            if let Ok(mut n) = pattern.parse::<u128>() {
+                if n == 0 {
+                    vec![0u8]
+                } else {
+                    let mut bytes = Vec::new();
+                    while n != 0 {
+                        bytes.push((n & 0xff) as u8);
+                        n >>= 8;
+                    }
+                    bytes
+                }
+            } else {
+                pattern.as_bytes().to_vec()
+            }
+        } else {
+            pattern.as_bytes().to_vec()
+        };
 
-            buf.truncate(size);
-            Ok(buf)
-        })();
+        if needle.is_empty() || needle.len() > mem.len() {
+            return result;
+        }
 
-        let _ = ptrace::detach(pid, None);
+        let plen = needle.len();
+        for i in 0..=(mem.len() - plen) {
+            if &mem[i..i + plen] == needle.as_slice() {
+                let addr = range.start + i as u64;
+                result.push((addr, hex::encode(&mem[i..i + plen])));
+            }
+        }
+
         result
+    }
+
+    pub fn searchmem_by_mapname(&self, mapname: &str, search: &str) -> Vec<(u64, String)> {
+        let mut result= Vec::new();
+
+        for m in self.vmmap().iter() {
+            if m.mapname == mapname && m.perm.contains('r') {
+                let overlap = self.searchmem(&m.range, search);
+                result.extend(overlap);
+            }
+        };
+        result
+    }
+
+    pub fn search_in_libc(&self, search: &str) -> Vec<(u64, String)> {
+        if let Some(libc) = self.libc() {
+            self.searchmem_by_mapname(&libc, search)
+        } else {
+            Vec::new()
+        }
+    }
+
+    pub fn search_in_stack(&self, search: &str) -> Vec<(u64, String)> {
+        self.searchmem_by_mapname("[stack]", search)
+    }
+
+    pub fn search_in_heap(&self, search: &str) -> Vec<(u64, String)> {
+        self.searchmem_by_mapname("[heap]", search)
+    }
+
+    fn libc(&self) -> Option<String> {
+        let re = Regex::new(LIBC_REGEX).ok()?;
+        for m in self.vmmap() {
+            if re.is_match(&m.mapname) {
+                return Some(m.mapname.clone());
+            }
+        };
+        None
+    }
+
+    fn ld(&self) -> Option<String> {
+        let re = Regex::new(LD_REGEX).ok()?;
+        for m in self.vmmap() {
+            if re.is_match(&m.mapname) {
+                return Some(m.mapname.clone());
+            }
+        };
+        None
     }
 
 }
