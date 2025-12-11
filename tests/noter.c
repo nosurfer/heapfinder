@@ -146,8 +146,8 @@ int main(void) {
     exit(EXIT_SUCCESS);
 }
 
-__attribute__((constructor))
-void buf_init() {
+__attribute__((constructor)) void
+buf_init() {
     setvbuf(stdout, NULL, _IONBF, 0);
     setvbuf(stderr, NULL, _IONBF, 0);
     setvbuf(stdin, NULL, _IONBF, 0);

