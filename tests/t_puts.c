@@ -1,3 +1,6 @@
+// glibc 2.42
+// https://github.com/nosurfer
+
 #include <stdio.h>
 #include <stdlib.h>
 

