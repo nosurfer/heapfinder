@@ -17,6 +17,7 @@ pub struct Map {
     mapname: String,
 }
 
+#[derive(Debug)]
 pub struct Proc {
     pid: u64,
     arch: Arch,
@@ -42,8 +43,20 @@ impl Proc {
         Proc { pid, arch: get_arch(&path).expect("Can't determine arch") }
     }
 
-    fn path(&self) -> PathBuf {
+    pub fn arch(&self) -> Arch {
+        self.arch
+    }
+
+    pub fn exe_path(&self) -> PathBuf {
         PathBuf::from(format!("/proc/{}/exe", self.pid))
+    }
+
+    pub fn libc_path(&self) -> Option<String> {
+        self.libc()
+    }
+
+    pub fn ld_path(&self) -> Option<String> {
+        self.ld()
     }
 
     pub fn vmmap(&self) -> Vec<Map> {
@@ -64,7 +77,10 @@ impl Proc {
                 let e = u64::from_str_radix(caps.name("e").unwrap().as_str(), 16).unwrap();
                 let range = s..e;
                 let perm = caps.name("p").unwrap().as_str();
-                let name = caps.name("n").unwrap().as_str();
+                let mut name = caps.name("n").unwrap().as_str();
+                if name.is_empty() {
+                    name = "mapped";
+                }
                 Map::new(range, perm, name)
         })
         .collect()
@@ -120,7 +136,7 @@ impl Proc {
             ["mapped", "libc", "heap", "stack"]
                 .map(|k| (k.to_string(), Vec::new())).into();
 
-        for m in self.vmmap().into_iter().rev() {
+        for m in self.vmmap() {
             let key = match &*m.mapname {
                 "mapped" => "mapped".to_string(),
                 "[stack]" => "stack".to_string(),
@@ -135,7 +151,8 @@ impl Proc {
 
             bases
                 .entry(key)
-                .or_insert(vec![m.range.start]);   
+                .and_modify(|v| v.push(m.range.start))
+                .or_insert(vec![m.range.start]);
         }
         bases
     }
@@ -298,4 +315,3 @@ impl Proc {
     }
 
 }
-

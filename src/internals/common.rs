@@ -3,7 +3,7 @@ use std::io::{self, Read, Seek, SeekFrom};
 
 const EI_CLASS_OFFSET: u64 = 4;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Arch {
     X86, 
     X64,
